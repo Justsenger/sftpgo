@@ -35,11 +35,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             <div id="errorTOTPTxt" class="card-body text-form-error"></div>
         </div>
         <div>
-            <p>状态:  {{if .TOTPConfig.Enabled }}"启用". Current configuration: "{{.TOTPConfig.ConfigName}}"{{else}}"未启用"{{end}}</p>
+            <p>状态:  {{if .TOTPConfig.Enabled }} 已启用. Current configuration: "{{.TOTPConfig.ConfigName}}"{{else}} 未启用{{end}}</p>
         </div>
         <div class="form-group row totpDisable">
             <div class="col-sm-12">
-                <a id="idTOTPDisable" class="btn btn-warning" href="#" onclick="totpDisableAsk()" role="button">Disable</a>
+                <a id="idTOTPDisable" class="btn btn-warning" href="#" onclick="totpDisableAsk()" role="button">禁用</a>
             </div>
         </div>
 
@@ -48,7 +48,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
             <p>1.SSH协议(SFTP/SCP/SSH)将要求输入密码。</p>
             <p>2.HTTP协议意味着Web UI和REST API。 Web UI使用一个特定界面输入密码。而对于REST API，您必须使用HTTP请求头来添加密码。</p>
             <p>3.FTP 没有标准的方式来支持双因素身份验证，若启用 FTP 支持，则必须在密码后添加 TOTP 密码。例如，如果您的密码是“password”，而您的一次性密码是“123456”，则您应该使用“password123456”作为密码。</p>
-            <p>4.WebDAV不受支持，因为每个请求都必须经过身份验证，并且不能重复使用密码。</p>
+            <p>4.不支持WebDAV，因为每个请求都必须经过身份验证，并且不能重复使用密码。</p>
         </div>
         <div class="form-group row totpProtocols">
             <label for="idProtocols" class="col-sm-3 col-form-label">需要双因素身份验证的协议：</label>
