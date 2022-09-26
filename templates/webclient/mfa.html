@@ -1,0 +1,497 @@
+<!--
+Copyright (C) 2019-2022  Nicola Murino
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, version 3.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+{{template "base" .}}
+
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "extra_css"}}
+<link href="{{.StaticURL}}/vendor/bootstrap-select/css/bootstrap-select.min.css" rel="stylesheet">
+{{end}}
+
+{{define "page_body"}}
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">TOTP (身份验证程序)</h6>
+    </div>
+    <div class="card-body">
+        <div id="successTOTPMsg" class="card mb-4 border-left-success" style="display: none;">
+            <div id="successTOTPTxt" class="card-body"></div>
+        </div>
+        <div id="errorTOTPMsg" class="card mb-4 border-left-warning" style="display: none;">
+            <div id="errorTOTPTxt" class="card-body text-form-error"></div>
+        </div>
+        <div>
+            <p>状态:  {{if .TOTPConfig.Enabled }}"启用". Current configuration: "{{.TOTPConfig.ConfigName}}"{{else}}"未启用"{{end}}</p>
+        </div>
+        <div class="form-group row totpDisable">
+            <div class="col-sm-12">
+                <a id="idTOTPDisable" class="btn btn-warning" href="#" onclick="totpDisableAsk()" role="button">Disable</a>
+            </div>
+        </div>
+
+        <div class="totpProtocols">
+            <p>若客户端使用键盘交互进行身份验证：</p>
+            <p>1.SSH协议(SFTP/SCP/SSH)将要求输入密码。</p>
+            <p>2.HTTP协议意味着Web UI和REST API。 Web UI使用一个特定界面输入密码。而对于REST API，您必须使用HTTP请求头来添加密码。</p>
+            <p>3.FTP 没有标准的方式来支持双因素身份验证，若启用 FTP 支持，则必须在密码后添加 TOTP 密码。例如，如果您的密码是“password”，而您的一次性密码是“123456”，则您应该使用“password123456”作为密码。</p>
+            <p>4.WebDAV不受支持，因为每个请求都必须经过身份验证，并且不能重复使用密码。</p>
+        </div>
+        <div class="form-group row totpProtocols">
+            <label for="idProtocols" class="col-sm-3 col-form-label">需要双因素身份验证的协议：</label>
+            <div class="col-sm-9">
+                <select class="form-control selectpicker" id="idProtocols" name="multi_factor_protocols" multiple>
+                    {{range $protocol := .Protocols}}
+                    <option value="{{$protocol}}" {{range $p :=$.TOTPConfig.Protocols }}{{if eq $p $protocol}}selected{{end}}{{end}}>{{$protocol}}
+                    </option>
+                    {{end}}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group row totpUpdateProtocols">
+            <div class="col-sm-12">
+                <a id="idTOTPUpdateProtocols" class="btn btn-primary" href="#" onclick="totpUpdateProtocols()" role="button">Update protocols</a>
+            </div>
+        </div>
+
+        <div class="form-group row">
+            <label for="idConfig" class="col-sm-3 col-form-label">设置</label>
+            <div class="col-sm-9">
+                <select class="form-control selectpicker" id="idConfig" name="config_name">
+                    <option value="">无</option>
+                    {{range .TOTPConfigs}}
+                    <option value="{{.}}" {{if eq . $.TOTPConfig.ConfigName}}selected{{end}}>{{.}}</option>
+                    {{end}}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group row totpGenerate">
+            <div class="col-sm-12">
+                <a id="idTOTPGenerate" class="btn btn-primary" href="#" onclick="totpGenerate()" role="button">生成新密钥</a>
+            </div>
+        </div>
+
+        <div id="idTOTPDetails" class="totpDetails">
+            <div>
+                <p>您的TOTP密码是: <span id="idSecret"></span></p>
+                <p>如需快速设置，请使用您的 TOTP 应用扫描此二维码：</p>
+                <img id="idQRCode" src="data:image/gif;base64, R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="QR code" />
+            </div>
+            <br>
+            <div>
+                <p>当您配置好应用程序后，在下面输入测试代码以确保一切正常。如果缺少恢复代码或其中大部分已被使用，则会自动生成恢复代码</p>
+            </div>
+
+            <div class="input-group">
+                <input type="text" class="form-control" id="idPasscode" name="passcode" value="" placeholder="Authentication code">
+                <span class="input-group-append">
+                    <a id="idTOTPSave" class="btn btn-primary" href="#" onclick="totpValidate()" role="button">输入验证码</a>
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{if .TOTPConfig.Enabled }}
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">验证并保存</h6>
+    </div>
+    <div id="idRecoveryCodesCard" class="card-body">
+        <div id="successRecCodesMsg" class="card mb-4 border-left-success" style="display: none;">
+            <div id="successRecCodesTxt" class="card-body"></div>
+        </div>
+        <div id="errorRecCodesMsg" class="card mb-4 border-left-warning" style="display: none;">
+            <div id="errorRecCodesTxt" class="card-body text-form-error"></div>
+        </div>
+        <div>
+            <p>恢复代码是一组一次性使用代码，可用于代替 TOTP 登录 Web UI。如果您无法访问手机以登录您的帐户并禁用或重新生成 TOTP 配置，您可以使用它们。</p>
+            <p>为确保您的帐户安全，请勿共享或分发您的恢复代码。我们建议使用安全的密码管理器保存它们。</p>
+        </div>
+        <div class="form-group row viewRecoveryCodes">
+            <div class="col-sm-12">
+                <a class="btn btn-primary" href="#" onclick="getRecoveryCodes()" role="button">View</a>
+            </div>
+        </div>
+        <div id="idRecoveryCodes" style="display: none;">
+            <ul id="idRecoveryCodesList" class="list-group">
+            </ul>
+            <br>
+        </div>
+        <div>
+            <p>如果您生成新的恢复代码，则旧代码会自动失效。</p>
+        </div>
+        <div class="form-group row">
+            <div class="col-sm-12">
+                <a class="btn btn-primary" href="#" onclick="generateRecoveryCodes()" role="button">Generate</a>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+{{end}}
+
+{{define "dialog"}}
+<div class="modal fade" id="disableTOTPModal" tabindex="-1" role="dialog" aria-labelledby="disableTOTPModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="disableTOTPModalLabel">
+                    Confirmation required
+                </h5>
+                <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">您是否想禁用 TOTP 配置？</div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" type="button" data-dismiss="modal">
+                    Cancel
+                </button>
+                <a class="btn btn-warning" href="#" onclick="totpDisable()">
+                    Disable
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "extra_js"}}
+<script src="{{.StaticURL}}/vendor/bootstrap-select/js/bootstrap-select.min.js"></script>
+<script type="text/javascript">
+
+    function totpGenerate() {
+        var path = "{{.GenerateTOTPURL}}";
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            data: JSON.stringify({"config_name": $('#idConfig option:selected').val()}),
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                $('.totpDisable').hide();
+                $('.totpGenerate').hide();
+                $('.totpUpdateProtocols').hide();
+                $('#idSecret').text(result.secret);
+                $('#idQRCode').attr('src','data:image/png;base64, '+result.qr_code);
+                $('.totpDetails').show();
+                window.scrollTo(0, $("#idTOTPDetails").offset().top);
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "无法生成新的 TOTP 密钥";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTOTPTxt').text(txt);
+                $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    function totpValidate() {
+        var passcode = $('#idPasscode').val();
+        if (passcode == "") {
+            $('#errorTOTPTxt').text("验证码为必填项");
+            $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            return;
+        }
+        var path = "{{.ValidateTOTPURL}}";
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            data: JSON.stringify({"passcode": passcode, "config_name": $('#idConfig option:selected').val(), "secret": $('#idSecret').text()}),
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                totpSave();
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "无法验证提供的密码";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTOTPTxt').text(txt);
+                $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    function totpSave() {
+        var path = "{{.SaveTOTPURL}}";
+        var protocolsArray = [];
+        $('#idProtocols').find('option:selected').each(function(){
+            protocolsArray.push($(this).val());
+        });
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            data: JSON.stringify({"enabled": true, "config_name": $('#idConfig option:selected').val(), "protocols": protocolsArray, "secret": {"status": "Plain", "payload": $('#idSecret').text()}}),
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                $('#successTOTPTxt').text("配置保存成功");
+                $('#successTOTPMsg').show();
+                    setTimeout(function () {
+                        location.reload();
+                    }, 3000);
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "配置保存失败";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTOTPTxt').text(txt);
+                $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    function totpDisableAsk() {
+        $('#disableTOTPModal').modal('show');
+    }
+
+    function totpUpdateProtocols() {
+        var path = "{{.SaveTOTPURL}}";
+        var protocolsArray = [];
+        $('#idProtocols').find('option:selected').each(function(){
+            protocolsArray.push($(this).val());
+        });
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            data: JSON.stringify({"protocols": protocolsArray}),
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                $('#successTOTPTxt').text("Protocols updated");
+                $('#successTOTPMsg').show();
+                    setTimeout(function () {
+                        location.reload();
+                    }, 3000);
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "Failed to update protocols";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTOTPTxt').text(txt);
+                $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    function totpDisable() {
+        $('#disableTOTPModal').modal('hide');
+        var path = "{{.SaveTOTPURL}}";
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            data: JSON.stringify({"enabled": false}),
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                location.reload();
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "无法禁用当前配置";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTOTPTxt').text(txt);
+                $('#errorTOTPMsg').show();
+                setTimeout(function () {
+                    $('#errorTOTPMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    function getRecoveryCodes() {
+        var path = "{{.RecCodesURL}}";
+        $.ajax({
+            url: path,
+            type: 'GET',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            timeout: 15000,
+            success: function (result) {
+                $('.viewRecoveryCodes').hide();
+                $('#idRecoveryCodesList').empty();
+                $.each(result, function(key, item) {
+                    if (item.used) {
+                        $('#idRecoveryCodesList').append(`<li class="list-group-item" style="text-decoration: line-through;">${item.code}</li>`);
+                    } else {
+                        $('#idRecoveryCodesList').append(`<li class="list-group-item">${item.code}</li>`);
+                    }
+                });
+                $('#idRecoveryCodes').show();
+                window.scrollTo(0, $("#idRecoveryCodesCard").offset().top);
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "获取您的恢复代码失败";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorRecCodesTxt').text(txt);
+                $('#errorRecCodesMsg').show();
+                setTimeout(function () {
+                    $('#errorRecCodesMsg').hide();
+                }, 8000);
+            }
+        });
+    }
+
+    function generateRecoveryCodes() {
+        var path = "{{.RecCodesURL}}";
+        $.ajax({
+            url: path,
+            type: 'POST',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            dataType: 'json',
+            contentType: 'application/json; charset=utf-8',
+            timeout: 15000,
+            success: function (result) {
+                $('.viewRecoveryCodes').hide();
+                $('#idRecoveryCodesList').empty();
+                $.each(result, function(key, item) {
+                    $('#idRecoveryCodesList').append(`<li class="list-group-item">${item}</li>`);
+                });
+                $('#idRecoveryCodes').show();
+                $('#successRecCodesTxt').text('成功生成恢复代码');
+                $('#successRecCodesMsg').show();
+                window.scrollTo(0, $("#idRecoveryCodesCard").offset().top);
+                setTimeout(function () {
+                    $('#successRecCodesMsg').hide();
+                }, 5000);
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "无法生成新的恢复代码";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorRecCodesTxt').text(txt);
+                $('#errorRecCodesMsg').show();
+                setTimeout(function () {
+                    $('#errorRecCodesMsg').hide();
+                }, 8000);
+            }
+        });
+    }
+
+    function handleConfigSelection() {
+        var selectedConfig = $('#idConfig option:selected').val();
+        if (selectedConfig == ""){
+            $('.totpGenerate').hide();
+        } else {
+            $('.totpGenerate').show();
+        }
+        $('.totpDetails').hide();
+        {{if .TOTPConfig.Enabled }}
+        $('.totpDisable').show();
+        {{end}}
+    }
+
+    $(document).ready(function () {
+        handleConfigSelection();
+        $('.totpDetails').hide();
+        {{if not .TOTPConfig.Enabled }}
+        $('.totpDisable').hide();
+        $('.totpUpdateProtocols').hide();
+        {{end}}
+
+        $('#idConfig').change(function() {
+            handleConfigSelection();
+        });
+    });
+</script>
+{{end}}

@@ -1,0 +1,46 @@
+<!--
+Copyright (C) 2019-2022  Nicola Murino
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, version 3.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+{{template "baselogin" .}}
+
+{{define "title"}}双因素身份认证{{end}}
+
+{{define "content"}}
+                                    {{if .Error}}
+                                    <div class="card mb-4 border-left-warning">
+                                        <div class="card-body text-form-error">{{.Error}}</div>
+                                    </div>
+                                    {{end}}
+                                    <form id="login_form" action="{{.CurrentURL}}" method="POST" autocomplete="off"
+                                        class="user-custom">
+                                        <div class="form-group">
+                                            <input type="text" class="form-control form-control-user-custom"
+                                                id="inputPasscode" name="passcode" placeholder="Authentication code" required>
+                                        </div>
+                                        <input type="hidden" name="_form_token" value="{{.CSRFToken}}">
+                                        <button type="submit" class="btn btn-primary btn-user-custom btn-block">
+                                            Verify
+                                        </button>
+                                    </form>
+                                    <hr>
+                                    <div>
+                                        <p>在您的设备上打开双因素身份验证应用程序，用来查看您的身份验证代码并验证您的身份。</p>
+                                    </div>
+                                    <hr>
+                                    <div>
+                                        <p><strong>Having problems?</strong></p>
+                                        <p><a href="{{.RecoveryURL}}">输入双因素恢复代码</a></p>
+                                    </div>
+{{end}}

@@ -1,0 +1,307 @@
+<!--
+Copyright (C) 2019-2022  Nicola Murino
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published
+by the Free Software Foundation, version 3.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+{{template "base" .}}
+
+{{define "title"}}{{.Title}}{{end}}
+
+{{define "extra_css"}}
+<link href="{{.StaticURL}}/vendor/datatables/dataTables.bootstrap4.min.css" rel="stylesheet">
+<link href="{{.StaticURL}}/vendor/datatables/buttons.bootstrap4.min.css" rel="stylesheet">
+<link href="{{.StaticURL}}/vendor/datatables/fixedHeader.bootstrap4.min.css" rel="stylesheet">
+<link href="{{.StaticURL}}/vendor/datatables/responsive.bootstrap4.min.css" rel="stylesheet">
+<link href="{{.StaticURL}}/vendor/datatables/select.bootstrap4.min.css" rel="stylesheet">
+{{end}}
+
+{{define "page_body"}}
+<div id="errorMsg" class="card mb-4 border-left-warning" style="display: none;">
+    <div id="errorTxt" class="card-body text-form-error"></div>
+</div>
+
+<div id="successMsg" class="card mb-4 border-left-success" style="display: none;">
+    <div id="successTxt" class="card-body"></div>
+</div>
+
+<div class="card shadow mb-4">
+    <div class="card-header py-3">
+        <h6 class="m-0 font-weight-bold text-primary">查看和管理分享</h6>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover nowrap" id="dataTable" width="100%" cellspacing="0">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>分享名</th>
+                        <th>权限</th>
+                        <th>信息</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Shares}}
+                    <tr>
+                        <td>{{.ShareID}}</td>
+                        <td>{{.Name}}</td>
+                        <td>{{.GetScopeAsString}}</td>
+                        <td>{{.GetInfoString}}</td>
+                        <td>{{if .IsExpired}}1{{else}}0{{end}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "dialog"}}
+<div class="modal fade" id="deleteModal" tabindex="-1" role="dialog" aria-labelledby="deleteModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">
+                    注意：
+                </h5>
+                <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">您是否想要删除所选分享？</div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" type="button" data-dismiss="modal">
+                    取消
+                </button>
+                <a class="btn btn-warning" href="#" onclick="deleteAction()">
+                    删除
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="linkModal" tabindex="-1" role="dialog" aria-labelledby="linkModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="linkModalLabel">
+                   分享链接
+                </h5>
+                <button class="close" type="button" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="readShare">
+                    <p>您可以将分享的文件打包为一个zip文件，通过此<a id="readLink" href="#" target="_blank">链接</a>分享。</p>
+                    <p>若此分享仅含一个目录，您可以通过该<a id="readBrowseLink" href="#" target="_blank">页面</a>浏览和下载。</p>
+                    <p>若此分享仅含一个文件，您可以通过该<a id="readUncompressedLink" href="#" target="_blank">链接</a>分享而无需压缩。
+                </div>
+                <div id="writeShare">
+                    <p>您可以上传一个或多个文件到这个分享目录，通过这个<a id="writePageLink" href="#" target="_blank">页面</a>。</p>
+                    <p>
+                        <a data-toggle="collapse" href="#collapseWriteShareAdvanced" aria-expanded="false" aria-controls="collapseWriteShareAdvanced">
+                            高级选项
+                        </a>
+                    </p>
+                    <div class="collapse" id="collapseWriteShareAdvanced">
+                        <div class="card card-body">
+                            <p>您可以通过发送一个multipart/form-data请求到<a id="writeLink" href="#" target="_blank">分享链接</a>，来上传一个或多个文件。表单参数是<b><code>文件全称</code></b>。</p>
+                            <p>例如： <code>curl -F filenames=@file1.txt -F filenames=@file2.txt "share link"</code></p>
+                            <p>或者您可以通过路径+文件名的形式作为Post请求正文，来上传文件到<a id="writeLinkSingle" href="#" target="_blank">分享链接</a>。可选的请求头<b><code>X-SFTPGO-MTIME</code></b>  允许设置文件的修改时间，其参数的意义是从1970年1月1日0时起到现在的毫秒数。</p>
+                            <p>例如： <code>curl --data-binary @file.txt -H "Content-Type: application/octet-stream" -H "X-SFTPGO-MTIME: 1638882991234" "share link/file.txt"</code></p>
+                        </div>
+                    </div>
+                </div>
+                <div id="expiredShare">
+		分享已过期，无法访问。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" type="button" data-dismiss="modal">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "extra_js"}}
+<script src="{{.StaticURL}}/vendor/datatables/jquery.dataTables.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/dataTables.bootstrap4.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/dataTables.buttons.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/buttons.bootstrap4.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/dataTables.fixedHeader.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/dataTables.responsive.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/responsive.bootstrap4.min.js"></script>
+<script src="{{.StaticURL}}/vendor/datatables/dataTables.select.min.js"></script>
+<script type="text/javascript">
+
+    function deleteAction() {
+        var table = $('#dataTable').DataTable();
+        table.button('delete:name').enable(false);
+        var shareID = table.row({ selected: true }).data()[0];
+        var path = '{{.ShareURL}}' + "/" + fixedEncodeURIComponent(shareID);
+        $('#deleteModal').modal('hide');
+        $.ajax({
+            url: path,
+            type: 'DELETE',
+            dataType: 'json',
+            headers: {'X-CSRF-TOKEN' : '{{.CSRFToken}}'},
+            timeout: 15000,
+            success: function (result) {
+                window.location.href = '{{.SharesURL}}';
+            },
+            error: function ($xhr, textStatus, errorThrown) {
+                var txt = "无法删除所选的分享";
+                if ($xhr) {
+                    var json = $xhr.responseJSON;
+                    if (json) {
+                        if (json.message){
+                            txt += ": " + json.message;
+                        } else {
+                            txt += ": " + json.error;
+                        }
+                    }
+                }
+                $('#errorTxt').text(txt);
+                $('#errorMsg').show();
+                setTimeout(function () {
+                    $('#errorMsg').hide();
+                }, 5000);
+            }
+        });
+    }
+
+    $(document).ready(function () {
+        $.fn.dataTable.ext.buttons.add = {
+            text: '<i class="fas fa-plus"></i>',
+            name: 'add',
+            titleAttr: "添加",
+            action: function (e, dt, node, config) {
+                window.location.href = '{{.ShareURL}}';
+            }
+        };
+
+        $.fn.dataTable.ext.buttons.edit = {
+            text: '<i class="fas fa-pen"></i>',
+            name: 'edit',
+            titleAttr: "编辑",
+            action: function (e, dt, node, config) {
+                var shareID = dt.row({ selected: true }).data()[0];
+                var path = '{{.ShareURL}}' + "/" + fixedEncodeURIComponent(shareID);
+                window.location.href = path;
+            },
+            enabled: false
+        };
+
+        $.fn.dataTable.ext.buttons.delete = {
+            text: '<i class="fas fa-trash"></i>',
+            name: 'delete',
+            titleAttr: "删除",
+            action: function (e, dt, node, config) {
+                $('#deleteModal').modal('show');
+            },
+            enabled: false
+        };
+
+        $.fn.dataTable.ext.buttons.link = {
+            text: '<i class="fas fa-link"></i>',
+            name: 'link',
+            titleAttr: "链接",
+            action: function (e, dt, node, config) {
+                var shareData = dt.row({ selected: true }).data();
+                var shareID = shareData[0];
+                var shareScope = shareData[2];
+                var isExpired = shareData[4];
+                if (isExpired == "1"){
+                    $('#expiredShare').show();
+                    $('#writeShare').hide();
+                    $('#readShare').hide();
+                } else {
+                    var shareURL = '{{.BasePublicSharesURL}}' + "/" + fixedEncodeURIComponent(shareID);
+                    if (shareScope == 'Read'){
+                        $('#expiredShare').hide();
+                        $('#writeShare').hide();
+                        $('#readShare').show();
+                        $('#readLink').attr("href", shareURL);
+                        $('#readLink').attr("title", shareURL);
+                        $('#readUncompressedLink').attr("href", shareURL+"?compress=false");
+                        $('#readUncompressedLink').attr("title", shareURL+"?compress=false");
+                        $('#readBrowseLink').attr("href", shareURL+"/browse");
+                        $('#readBrowseLink').attr("title", shareURL+"/browse");
+                    } else {
+                        $('#expiredShare').hide();
+                        $('#writeShare').show();
+                        $('#readShare').hide();
+                        $('#writePageLink').attr("href", shareURL+"/upload");
+                        $('#writePageLink').attr("title", shareURL+"/upload");
+                        $('#writeLink').attr("href", shareURL);
+                        $('#writeLink').attr("title", shareURL);
+                        $('#writeLinkSingle').attr("href", shareURL);
+                        $('#writeLinkSingle').attr("title", shareURL);
+                    }
+                }
+                $('#linkModal').modal('show');
+            },
+            enabled: false
+        };
+
+        var table = $('#dataTable').DataTable({
+            "select": {
+                "style": "single",
+                "blurable": true
+            },
+            "stateSave": true,
+            "stateDuration": 0,
+            "buttons": [],
+            "columnDefs": [
+                {
+                    "targets": [0, 4],
+                    "visible": false,
+                    "searchable": false
+                }
+            ],
+            "scrollX": false,
+            "scrollY": false,
+            "responsive": true,
+            "language": {
+                "emptyTable": "No share defined"
+            },
+            "order": [[1, 'asc']]
+        });
+
+        new $.fn.dataTable.FixedHeader( table );
+
+        table.button().add(0,'link');
+        table.button().add(0,'delete');
+        table.button().add(0,'edit');
+        table.button().add(0,'add');
+
+        table.buttons().container().appendTo('.col-md-6:eq(0)', table.table().container());
+
+        table.on('select deselect', function () {
+            var selectedRows = table.rows({ selected: true }).count();
+            table.button('edit:name').enable(selectedRows == 1);
+            table.button('clone:name').enable(selectedRows == 1);
+            table.button('delete:name').enable(selectedRows == 1);
+            table.button('link:name').enable(selectedRows == 1);
+        });
+    });
+</script>
+{{end}}
